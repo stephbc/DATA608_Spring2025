@@ -1,0 +1,167 @@
+---
+title: "Do stricter gun laws reduce firearm gun deaths?"
+subtitle: "DATA 608 Spring 2025 - Story 3"
+author: "Stephanie Chiang"
+format: revealjs
+editor: visual
+execute:
+  echo: false
+---
+
+## Introduction
+
+Gun violence is an important issue that uniquely affects the Unites States. This is an analysis of the relationship between gun laws, firearm ownership and gun death rates across all 50 states. Using data from various sources including the CDC, the associations between these numbers can easily be visualized.
+
+## Data
+
+We will be examining the following data:
+
+-   total firearm mortality for each state per 100,000 persons
+
+-   total number of firearm laws for each state
+
+-   estimated household gun ownership for each state
+
+```{r import}
+library(tidyverse)
+
+# Import firearm mortality data
+fm_raw <- read.csv("firearm_mortality2022.csv")
+
+# Import firearm laws data
+laws_raw <- read.csv("firearm_laws.csv")
+
+# Import gun ownership data
+own_raw <- read.csv("gun-ownership-by-state.csv")
+```
+
+```{r clean}
+# Clean the firearm dataframe
+fm <- fm_raw[fm_raw$YEAR == 2022,] |>
+  select(STATE, RATE) |>
+  rename(DEATH_RATE = RATE)
+fm$region <- tolower(state.name[match(fm$STATE, state.abb)])
+
+# Clean the ownership dataframe
+own <- own_raw |>
+  select(state, GunOwnershipPercentage) |>
+  rename(OWNERSHIP_RATE = GunOwnershipPercentage, region = state)
+own$region <- tolower(own$region)
+
+# Clean the laws dataframe
+laws <- laws_raw |>
+  select(STATE, LAWTOTAL) |>
+  rename(region = STATE, LAW_TOTAL = LAWTOTAL)
+laws$region <- tolower(laws$region)
+```
+
+```{r join}
+# Join the dataframes
+firearms <- merge(fm, own, by = "region", all = TRUE)
+firearms <- merge(firearms, laws, by = "region", all = TRUE)
+firearms <- firearms |> drop_na()
+```
+
+```{r data}
+#| echo: true
+
+head(firearms)
+```
+
+## Plotting the linear relationships
+
+```{r mort-plot}
+#| output-location: slide
+
+ggplot(firearms, aes(x = DEATH_RATE, y = OWNERSHIP_RATE)) +
+  geom_point() +
+  labs(title = "Gun Ownership vs Mortality Rates for the Unites States",
+       x = "Gun Ownership Rate",
+       y = "Firearm Mortality Rate per 100,000 Persons") +
+  theme_bw() + 
+  geom_smooth(method = "lm", formula = "y ~ x")
+```
+
+---
+
+```{r law-own-plot}
+#| output-location: slide
+
+ggplot(firearms, aes(x = OWNERSHIP_RATE, y = LAW_TOTAL)) +
+  geom_point() +
+  labs(title = "Gun Laws vs Ownership for the Unites States",
+       x = "Total Number of Laws",
+       y = "Gun Ownership Rate") +
+  theme_bw() + 
+  geom_smooth(method = "lm", formula = "y ~ x")
+```
+
+---
+
+```{r laws-death}
+#| output-location: slide
+ggplot(firearms, aes(x = DEATH_RATE, y = LAW_TOTAL)) +
+  geom_point() +
+  labs(title = "Gun Ownership vs Mortality Rates for the Unites States",
+       x = "Total Number of Laws",
+       y = "Firearm Mortality Rate per 100,000 Persons") +
+  theme_bw() + 
+  geom_smooth(method = "lm", formula = "y ~ x")
+```
+
+## Mapping the data
+
+```{r joins}
+library(maps)
+
+cont_states <- map_data("state")
+cont_states <- cont_states |> select(!subregion)
+
+alaska <- map_data("world") |> subset(subregion == "Alaska")
+alaska$region <- "alaska"
+alaska <- alaska |> select(!subregion)
+
+hawaii <- map_data("world") |> subset(subregion == "Hawaii")
+hawaii$region <- "hawaii"
+hawaii <- hawaii |> select(!subregion)
+
+all_states <- merge(cont_states, alaska, all = TRUE)
+all_states <- merge(all_states, hawaii, all = TRUE)
+
+cont_guns <- left_join(cont_states, firearms, by = "region")
+all_guns <- left_join(all_states, firearms, by = "region") |>
+  rename(abb = STATE, state = region)
+```
+
+```{r map-mort}
+#| message: true
+#| warning: false
+#| output-location: slide
+
+library(usmap)
+library(patchwork)
+
+map1 <- plot_usmap(data = all_guns,
+           values = "DEATH_RATE",
+           regions = "states",
+           color = "gray90",
+           size = 0.1) +
+  scale_fill_continuous(low = "#ADD8E6", high = "#132B43", name = "Death Rate") + 
+  labs(title = "Firearm Mortality Rate per 100,000 Persons") +
+  theme(legend.position = "right")
+
+map2 <- plot_usmap(data = all_guns,
+           values = "LAW_TOTAL",
+           regions = "states",
+           color = "gray90",
+           size = 0.1) +
+  scale_fill_continuous(low = "#132B43", high = "#ADD8E6", name = "Number of Laws") + 
+  labs(title = "Presence of Gun Laws") +
+  theme(legend.position = "right")
+
+map1 + map2
+```
+
+## Conclusion
+
+These plots and maps suggest clear links between gun laws, gun ownership and gun deaths. States with more laws on the books tend to also have lower gun ownership rates and states with high gun ownership tend to report higher mortality rates.
