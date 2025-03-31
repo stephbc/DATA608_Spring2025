@@ -1,0 +1,144 @@
+---
+title: "Modeling AMES Housing Data"
+subtitle: "DATA 608 Spring 2025 - Story 5"
+author: "Stephanie Chiang"
+format: revealjs
+execute:
+  echo: false
+  output: false
+---
+
+### Using the AMES housing dataset, we will be examining how various factors can affect home prices and using them to make predictions for future sales.
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+
+library(tidyverse)
+library(ggplot2)
+library(patchwork)
+library(marginaleffects)
+
+# Load the dataset
+ames_data <- read.csv("train.csv")
+```
+
+```{r}
+# Reduce dimensionality
+# Calculate and drop columns with more than 45% missing values
+missing_ratio <- colMeans(is.na(ames_data)) * 100
+# print(sort(missing_ratio, decreasing = TRUE)[1:10])
+
+ames <- ames_data[, colMeans(is.na(ames_data)) <= 0.45]
+
+# Select columns for analysis
+cls <- c("SalePrice", "MoSold", "SaleCondition", "BldgType", "OverallQual", "OverallCond", "HeatingQC", "CentralAir", "GrLivArea", "GarageCars")
+ames <- ames |> select(all_of(cls))
+```
+
+```{r}
+# Linear regression model
+ames_mod <- lm(data = ames,
+               SalePrice ~ MoSold + SaleCondition + BldgType + OverallQual + 
+                 OverallCond + HeatingQC + CentralAir + GrLivArea + GarageCars)
+
+summary(ames_mod)
+```
+
+##
+
+We can begin with a couple of fairly obvious factors that contribute to higher sale prices: building type and sale condition.
+
+```{r}
+#| message: false
+#| warning: false
+#| output: true
+bldg <- plot_predictions(ames_mod, by = "BldgType") +
+  labs(x = "Building type", y = "Predicted sale price") +
+  ylim(0, 275000) +
+  theme_minimal()
+
+sale <- plot_predictions(ames_mod, by = "SaleCondition") +
+  labs(x = "Sale condition", y = "") +
+  ylim(0, 275000) +
+  theme_minimal()
+
+bldg + sale
+```
+
+##
+
+Single-family detached homes and end-units in townhouse rows can be expected to sell for much higher than other types of buildings.
+
+And we can predict sales of "partial" incomplete homes (referring to brand new properties) to be nearly $100K more than the next category.
+
+##
+
+High ratings for the quality of the materials and finish of the home can increase the sales price more predictably than higher ratings for the overall general condition of the house. 
+
+```{r}
+#| message: false
+#| warning: false
+#| output: true
+
+qual <- plot_predictions(ames_mod, by = "OverallQual") +
+  labs(x = "Material quality", y = "Predicted sale price") +
+  xlim(0, 10) +
+  ylim(0, 275000) +
+  theme_minimal()
+
+cond <- plot_predictions(ames_mod, by = "OverallCond") +
+  labs(x = "Overall condition", y = "") + 
+  xlim(0, 10) +
+  ylim(0, 275000) +
+  theme_minimal()
+
+qual + cond
+```
+
+##
+As expected, square footage of living area increases the predicted price. However, the number of cars that can be accommodated by the garage peaks as a predictor at 3 (this may be due to limited data).
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| output: true
+
+living <- plot_predictions(ames_mod, by = "GrLivArea") +
+  labs(x = "Above ground square footage", y = "Predicted sale price") +
+  ylim(0, 350000) +
+  xlim(0, 3500) +
+  theme_minimal()
+
+garage <- plot_predictions(ames_mod, by = "GarageCars") +
+  labs(x = "Car capacity of garage", y = "") +
+  ylim(0, 350000) +
+  theme_minimal()
+
+living + garage
+```
+
+##
+Finally, a less obvious feature is central air, which appears to be associated with a significant boost of almost $100k. The effect of the quality of the home's heating, in contrast, is less remarkable.
+
+```{r}
+#| message: false
+#| warning: false
+#| output: true
+
+level_order <- c("Ex", "Gd", "TA", "Fa", "Po")
+x_labels <- c("Excellent", "Good", "Average", "Fair", "Poor")
+
+plot_predictions(ames_mod, by = c("HeatingQC", "CentralAir")) +
+  scale_x_discrete(limits = level_order, labels = x_labels) +
+  scale_color_discrete(name = "Central Air", limits = c("Y", "N"), labels = c("Yes", "No")) +
+  labs(x = "Heating quality and condition", y = "Predicted sale price") +
+  theme_minimal()
+```
+
+
+
+
+
