@@ -1,0 +1,155 @@
+---
+title: "Instacart Customer Segmentation"
+subtitle: "DATA 608 Spring 2025 - Story 5"
+author: "Stephanie Chiang"
+format: pdf
+execute:
+  echo: false
+  output: false
+---
+
+This is a customer segmentation analysis for Instacart users based on:
+
+-   the total number of orders made for the year
+
+-   the total number of items purchased for the year
+
+-   the average number of days between orders
+
+-   the minimum number of days between orders
+
+```{r lib}
+#| message: false
+#| warning: false
+#| include: false
+
+library(tidyverse)
+library(broom)
+library(ggrepel)
+```
+
+```{r import}
+#| message: false
+#| warning: false
+#| include: false
+
+users <- read.csv("DataStory6_files/user_features.csv")
+orders <- read.csv("DataStory6_files/orders.csv")
+```
+
+```{r transform}
+orders2 <- orders |>
+  select(user_id, order_number, days_since_prior_order) |>
+  group_by(user_id) |>
+  summarise(
+    total_orders = max(order_number),
+    min_freq = min(days_since_prior_order, na.rm = TRUE),
+    mean_freq = mean(days_since_prior_order, na.rm = TRUE))
+
+users2 <- users |>
+  select(user_id:frozen.juice) |>
+  mutate(total_items = rowSums(across(packaged.cheese:frozen.juice))) |>
+  select(user_id, total_items)
+
+cust <- orders2 |> left_join(users2, join_by(user_id))
+```
+
+## Principal Component Analysis
+
+```{r pca}
+cust2 <- cust[c(2:5)] |> scale()
+cust_pca <- cust2 |> prcomp(retx = TRUE)
+cust_pca
+```
+
+```{r summary}
+#| output: true
+
+summary(cust_pca)
+cust_pca$rotation
+```
+
+## Principal Component Analysis
+
+-   The weights for total number of orders and mean frequency of days between orders on PC1 are about equal (though the other 2 variables are not far off).
+
+-   For PC2, minimum number of days between orders has the highest absolute value.
+
+-   PC1 and PC2 have a combined proportion of variance of about 0.9.
+
+## PCA Biplot
+
+Here are the projected data points, with the direction and strength of the original variables on the principal components shown as scaled arrows.
+
+```{r scale-arrows}
+loadings <- as.data.frame(cust_pca$rotation[, 1:2])
+loadings$Variable <- rownames(loadings)
+cust_pca_df <- as.data.frame(cust_pca$x)
+scale_factor <- max(abs(cust_pca_df[, 1:2])) / max(abs(loadings[, 1:2]))
+loadings_scaled <- loadings
+loadings_scaled[, 1:2] <- loadings_scaled[, 1:2] * scale_factor * 0.8
+```
+
+```{r biplot}
+#| output: true
+
+cust_pca |>
+  augment(cust2) |>
+  ggplot(aes(.fittedPC1, .fittedPC2)) +
+    geom_point(size = 0.5, color = "gray") +
+    geom_segment(data = loadings_scaled, aes(x = 0, y = 0, xend = PC1, yend = PC2),
+                 arrow = arrow(length = unit(0.2, "cm")), color = "navy") +
+    geom_text_repel(data = loadings, aes(x = PC1, y = PC2, label = Variable),
+                    size = 3, color = "navy") +
+    theme_minimal() +
+    labs(title = "PCA Biplot", x = "PC1", y = "PC2")
+```
+
+## PCA and K-Means Clusters
+
+Here are the data points once again projected onto principal components, colored by their assigned clusters and marked at the centers.
+
+```{r pca-k}
+#| output: true
+set.seed(123)
+
+cust_pca_scores <- cust_pca_df[, 1:2]
+kmeans_result <- kmeans(cust_pca_scores, centers = 3)
+cust_pca_scores$Cluster <- as.factor(kmeans_result$cluster)
+
+ggplot(cust_pca_scores, aes(x = PC1, y = PC2, color = Cluster)) +
+  geom_point(size = 0.5) +
+  geom_point(data = as.data.frame(kmeans_result$centers), 
+             aes(x = PC1, y = PC2), 
+             color = "black", shape = 4, size = 3, stroke = 1) +
+  labs(title = "PCA + K-Means Clustering", x = "PC1", y = "PC2") +
+  theme_minimal()
+```
+
+## K-Means Clusters
+
+```{r km-cluster}
+cust_km <- cust_pca |>
+  augment(cust2) |>
+  select(.fittedPC1:.fittedPC4) |>
+  kmeans(centers = 3, nstart = 10)
+
+cust_clustered <- cust |> 
+  add_column(cluster = factor(cust_km$cluster))
+head(cust_clustered)
+```
+
+The cluster assignments of each customer can also be plotted (based on total orders and minimum frequency, for example).
+
+```{r km-plot}
+#| output: true
+
+ggplot(cust_clustered, aes(x = total_orders, y = min_freq)) + 
+  geom_point(aes(color = cluster)) +
+  labs(title = "Customer Clusters", x = "Total number of orders", y = "Minimum number of days between orders") +
+  theme_minimal()
+```
+
+## Customer Segmentation Analysis
+
+Though 3 was selected as a starting point for the number of clusters, this number can be adjusted to further examine customer data using PCA and K-Means clustering.
