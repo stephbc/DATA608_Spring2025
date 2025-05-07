@@ -5,22 +5,34 @@ import seaborn as sns
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 from shiny.express import input, render, ui
+from shiny import reactive
 from shinywidgets import render_widget
 
 # %%
 # Load Data
-prods = pd.read_csv('all_order_products.csv')
-orders = pd.read_csv('orders.csv') # for the user_id
-items = pd.read_csv('products.csv') # for the aisle_id
-aisles = pd.read_csv('aisles.csv') # for aisle name
+@reactive.file_reader('all_order_products.csv')
+def prods():
+    return pd.read_csv('all_order_products.csv')
+
+@reactive.file_reader('orders.csv')
+def orders():
+    return pd.read_csv('orders.csv') # for the user_id
+
+@reactive.file_reader('products.csv')
+def items():
+    return pd.read_csv('products.csv') # for the aisle_id
+
+@reactive.file_reader('aisles.csv')
+def aisles():
+    return pd.read_csv('aisles.csv') # for aisle name
 
 # %%
-# Data Preprocessing
+# Data Preprocessing=
 def df_tidy():
-    df_tidy = prods.copy()
+    df_tidy = prods().copy()
     df_tidy = df_tidy.drop(columns=['add_to_cart_order'])
-    df_tidy['user_id'] = df_tidy['order_id'].map(orders.set_index('order_id')['user_id'])
-    df_tidy['aisle_id'] = df_tidy['product_id'].map(items.set_index('product_id')['aisle_id'])
+    df_tidy['user_id'] = df_tidy['order_id'].map((orders()).set_index('order_id')['user_id'])
+    df_tidy['aisle_id'] = df_tidy['product_id'].map(items().set_index('product_id')['aisle_id'])
     return df_tidy
 
 def item_metrics():
@@ -29,8 +41,8 @@ def item_metrics():
     }).rename(columns={
         'order_id': 'num_orders'
     }).reset_index()
-    item_m['product_name'] = item_m['product_id'].map(items.set_index('product_id')['product_name'])
-    item_m['aisle_name'] = item_m['aisle_id'].map(aisles.set_index('aisle_id')['aisle'])
+    item_m['product_name'] = item_m['product_id'].map(items().set_index('product_id')['product_name'])
+    item_m['aisle_name'] = item_m['aisle_id'].map(aisles().set_index('aisle_id')['aisle'])
     return item_m
 
 def user_metrics():
@@ -43,7 +55,7 @@ def user_metrics():
         'product_id': 'num_items'
         # 'aisle_id': 'top_cat_id'
     }).reset_index()
-    # product_m['top_cat_name'] = product_m['top_cat_id'].map(aisles.set_index('aisle_id')['aisle'])
+    # product_m['top_cat_name'] = product_m['top_cat_id'].map(aisles().set_index('aisle_id')['aisle'])
     return user_m
 
 def top_all():
@@ -73,7 +85,7 @@ with ui.nav_panel('Top 10'):
             plt.figure(figsize = (10, 6))
             sns.barplot(
                 data = top_all(),
-                palette = sns.light_palette('seagreen', reverse = True, n_colors = 20),
+                color = 'seagreen',
                 x = f"{input.rank_type()}_name",
                 y = f"{input.rank_type()}_orders")
             plt.xlabel('')
